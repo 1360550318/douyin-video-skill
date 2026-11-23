@@ -1,40 +1,30 @@
-# v1.0.1
+# v1.1.1
 
-审计发现项修复版。可移植性、性能与健壮性三方面改进。
+一键部署 + 自动化质检版。
 
-## 修复
+## 新增
 
-| 级别 | 问题 | 修复 |
-|---|---|---|
-| **P0** | 找不到浏览器时 `subprocess.Popen([None, ...])` 直接崩 | 启动前做依赖预检（`check_deps()` / `check_playwright()`），缺什么列什么并给安装方法 |
-| **P1 性能** | 批量模式每条视频起一个子进程跑 OCR，RapidOCR 模型重复加载（每次 2–3 秒） | 抽出 `analyze_video()` / `write_outputs()`，批量改为**进程内**调用，模型只加载一次；顺带省掉 N 次进程启动，产物也直接落在每个视频目录里 |
-| **P2** | 设置了 `http_proxy` 的机器上，CDP 请求 `127.0.0.1` 会被代理劫持 | 新增 `LOCAL_OPENER`（`ProxyHandler({})`）绕开代理 |
-| **P2** | OCR 子进程超时会抛未捕获异常 | 捕获 `TimeoutExpired` 并给出可读提示 |
-| **P2** | `auto` 与 `channel` 共用浏览器 profile，同时跑会因 profile 锁冲突起不来 | 各自独立子目录 `auto` / `channel` / `audio` |
-| **P3** | CDP 端口硬编码 9224，被占用时无法规避 | 新增 `--port` 参数 |
-| **P3** | 未指定作者时批量汇总标题为空 | 从已校验的作品元信息自动回填昵称 |
+### 一键安装器 `install.py` / `install.sh` / `install.cmd`
+装依赖 → 装进 skill 目录 → 自检 → 打印下一步。
+`--link` 依次尝试 符号链接 / Windows 目录联结 / 复制；自动检测 WorkBuddy / Claude Code /
+Cursor / Copilot CLI / Codex CLI 的 skill 目录。
 
-## 速度实测（v1.0.1）
+### 环境自检 `scripts/doctor.py`
+一条命令确认本机能不能跑：Python 版本、依赖包、浏览器、ffmpeg/ffprobe、playwright 内核、
+脚本语法、输出目录可写。`--json` 机器可读。
 
-```
---text-only（只要平台章节要点）      ~15 s
-完整分析（147 秒视频 / 12 帧 OCR）   ~44 s
-视频下载 5.9 MB                      0.6 s（10.7 MB/s）
-批量模式（douyin_channel）           每条约 5 s，OCR 引擎只加载一次
-```
+### 静态质检 `scripts/selftest.py`
+不开浏览器不联网，秒级完成：语法编译、依赖清单与实际 import 双向差集、
+README/SKILL.md 的 CLI 一致性、硬编码路径与密钥扫描、跨平台与编码（AST 精确判定）。
+**P0+P1 归零才退出 0。**
 
-主要耗时在浏览器启动与等页面签名取流，不是下载也不是 OCR。
+### 文档
+README 新增「30 秒部署」章节（含可直接转发给 AI Agent 的安装指令块）；
+SKILL.md 新增「首次使用：先自检」与相对路径陷阱提醒。
 
-## 回归验证
+## 验收
+全新 clone → selftest P0+P1=0 → doctor 全绿 → 真实链接分析跑通（23 秒）。
 
-- 5 个脚本语法编译 + `--help` 全通过
-- 单条视频端到端跑通（真实链接，产出 transcript.md / .srt / report.json）
-- 批量链路跑通（作者逐条校验、每条 OCR 出段、INDEX.md 汇总正确）
-- `check_deps()` / `check_playwright()` 返回空
-- 新增 API（`get_ocr` / `analyze_video` / `write_outputs` / `profile_dir` / `LOCAL_OPENER`）冒烟通过
-- CLI 与 README / SKILL.md 逐条核对一致
-
-## 文档同步
-
-README、SKILL.md、`docs/技术原理.md`（新增「工程细节：可移植性与性能」一节）、
-`docs/常见问题.md`（新增浏览器缺失 / 端口冲突 / 依赖预检 / 批量慢 四个问答）
+## GitHub Actions
+`docs/github-actions-ci.yml` 是工作流模板，复制到 `.github/workflows/ci.yml` 即可启用
+（写入 `.github/workflows/` 需要令牌带 `workflow` scope；没有也不影响使用）。
