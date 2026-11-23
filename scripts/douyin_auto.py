@@ -24,7 +24,8 @@ import urllib.request
 import websocket
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import EDGE, PROFILE, PY, ANALYZER, OUT_ROOT  # noqa: E402
+from config import (EDGE, PROFILE, PY, ANALYZER, OUT_ROOT,  # noqa: E402
+                    check_deps, profile_dir, LOCAL_OPENER)
 
 OUTBASE = OUT_ROOT
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -52,8 +53,9 @@ PROBE_EXPR = r"""
 class CDP:
     """最小 CDP 客户端：一个进程内启动 Edge、连接、发命令、收事件、收尾。"""
 
-    def __init__(self, port=9224, args_extra=None):
+    def __init__(self, port=9224, args_extra=None, profile=None):
         self.port = port
+        self.profile = profile
         self.proc = None
         self.ws = None
         self.seq = 0
@@ -61,11 +63,16 @@ class CDP:
         self.args_extra = list(args_extra or [])
 
     def __enter__(self):
-        os.makedirs(PROFILE, exist_ok=True)
+        if not EDGE:
+            raise RuntimeError(
+                "未找到浏览器（需要 Edge 或 Chrome）。"
+                "请安装其中之一，或用环境变量 DOUYIN_BROWSER 指定可执行文件路径。")
+        prof = self.profile or profile_dir("auto")
+        os.makedirs(prof, exist_ok=True)
         args = [EDGE, "--headless=new", "--disable-gpu", "--no-first-run",
                 "--no-default-browser-check", "--disable-background-networking",
                 "--disable-extensions", "--remote-debugging-port=%d" % self.port,
-                "--remote-allow-origins=*", "--user-data-dir=" + PROFILE,
+                "--remote-allow-origins=*", "--user-data-dir=" + prof,
                 "--user-agent=" + UA, "about:blank"] + self.args_extra
         self.proc = subprocess.Popen(args, stdout=subprocess.DEVNULL,
                                      stderr=subprocess.DEVNULL)
@@ -87,8 +94,9 @@ class CDP:
         return self
 
     def _http(self, path, timeout=3):
-        with urllib.request.urlopen("http://127.0.0.1:%d%s" % (self.port, path),
-                                    timeout=timeout) as r:
+        # 用 LOCAL_OPENER 绕开系统代理（CDP 只打本机）
+        with LOCAL_OPENER.open("http://127.0.0.1:%d%s" % (self.port, path),
+                               timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8", "replace"))
 
     def _recv(self, timeout):
@@ -179,14 +187,14 @@ def ready(d, resp_urls):
     return loaded and bool(pick_stream(d, resp_urls))
 
 
-def grab(url, wait=50):
+def grab(url, wait=50, port=9224, profile=None):
     """返回 (页面信息 dict, cookies 列表)。
 
     抖音页面先渲染骨架再异步取视频数据；<video>.currentSrc 可能是 blob:
     （MediaSource 流），因此同时监听 Network 响应与 performance 资源表，
     三处汇总挑出真正可 HTTP 下载的 CDN 地址。
     """
-    with CDP() as c:
+    with CDP(port=port, profile=profile) as c:
         c.cmd("Page.navigate", {"url": url})
         best, best_score = {}, -1
         resp_urls = []
@@ -279,7 +287,17 @@ def main():
     ap.add_argument("--frames", type=int, default=40, help="最多抽帧数")
     ap.add_argument("--wait", type=int, default=50, help="页面加载最长等待秒")
     ap.add_argument("--text-only", action="store_true", help="只抓页面文字，不下载")
+    ap.add_argument("--port", type=int, default=9224,
+                    help="CDP 调试端口（默认 9224；端口被占用时换一个）")
     a = ap.parse_args()
+
+    miss = check_deps()
+    if miss:
+        print("ABORT: 缺少依赖：")
+        for m in miss:
+            print("  - " + m)
+        print("  详见 README「安装」或 docs/常见问题.md")
+        return 2
 
     rid = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     work = os.path.join(OUTBASE, "auto_" + rid)
@@ -287,7 +305,7 @@ def main():
     print("输出目录:", work, flush=True)
 
     print("[1/4] 启动无头浏览器，加载页面…", flush=True)
-    info, cookies = grab(a.url, a.wait)
+    info, cookies = grab(a.url, a.wait, port=a.port)
     play = info.get("stream") or ""
     print("    最终地址:", info.get("href", "")[:120], flush=True)
     print("    标题:", info.get("title", "")[:80], flush=True)
@@ -326,11 +344,16 @@ def main():
         return 3
 
     print("[4/4] 抽帧 OCR 分析…", flush=True)
-    r = subprocess.run([PY, ANALYZER, "--file", mp4,
-                        "--interval", str(a.interval),
-                        "--frames", str(a.frames)],
-                       capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=600)
+    try:
+        r = subprocess.run([PY, ANALYZER, "--file", mp4,
+                            "--interval", str(a.interval),
+                            "--frames", str(a.frames)],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=600)
+    except subprocess.TimeoutExpired:
+        print("ANALYZE_FAIL: OCR 分析超时（>600s）。"
+              "可调小 --frames 或调大 --interval 后重试")
+        return 4
     print((r.stdout or "")[-1200:], flush=True)
     if r.returncode != 0:
         print("ANALYZE_FAIL rc=%d %s" % (r.returncode, (r.stderr or "")[-300:]))

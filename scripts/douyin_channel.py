@@ -18,6 +18,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from douyin_auto import (CDP, PROBE_EXPR, PY, ANALYZER, UA,  # noqa: E402
                          real_stream, download, clean_text)
+import douyin_analyze as DA  # noqa: E402  进程内复用，OCR 引擎只加载一次
 
 
 def pick_current(d, resp_urls):
@@ -31,7 +32,7 @@ def pick_current(d, resp_urls):
     return ""
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import OUT_ROOT  # noqa: E402
+from config import OUT_ROOT, check_deps, profile_dir  # noqa: E402
 
 OUTBASE = os.path.join(OUT_ROOT, "channel")
 
@@ -128,6 +129,13 @@ def main():
     ap.add_argument("--no-ocr", action="store_true")
     a = ap.parse_args()
 
+    miss = check_deps()
+    if miss:
+        print("ABORT: 缺少依赖：")
+        for m in miss:
+            print("  - " + m)
+        return 2
+
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     work = os.path.join(OUTBASE, stamp)
     os.makedirs(work, exist_ok=True)
@@ -151,7 +159,7 @@ def main():
     print("已知主页作品:", len(known), flush=True)
 
     results = []
-    with CDP(port=9228) as c:
+    with CDP(port=9228, profile=profile_dir("channel")) as c:
         # 1) 收集候选 ID：种子视频页 + 主页 DOM
         seed_ids = []
         if a.seed_video:
@@ -181,6 +189,13 @@ def main():
             if meta and (not a.author or meta.get("author") == a.author):
                 known[aid] = meta
                 print("  校验通过 %s  %s" % (aid, meta["desc"][:36]), flush=True)
+        # 未显式指定作者时，从已校验的作品元信息里回填昵称（用于汇总标题）
+        if not a.author:
+            for v in known.values():
+                if v.get("author"):
+                    a.author = v["author"]
+                    break
+
         # 种子视频本身补上（用户已给，时间已知）
         if a.seed_video and a.seed_video not in known:
             known[a.seed_video] = {"aweme_id": a.seed_video, "desc": "", "author": a.author,
@@ -232,18 +247,18 @@ def main():
                 print("  未取得播放流，仅保存页面文字", flush=True)
 
             if (not a.no_ocr) and os.path.isfile(os.path.join(vdir, "source.mp4")):
+                # 进程内调用：省掉每条视频起一次子进程 + 重复加载 OCR 模型的开销
                 try:
-                    r = subprocess.run([PY, ANALYZER, "--file", os.path.join(vdir, "source.mp4"),
-                                        "--interval", str(a.interval), "--frames", str(a.frames)],
-                                       capture_output=True, text=True, encoding="utf-8",
-                                       errors="replace", timeout=240)
-                    m = re.search(r"输出目录:\s*(\S+)", r.stdout or "")
-                    t["ocr_dir"] = m.group(1) if m else ""
-                    n = re.search(r"识别出 (\d+) 个文字段", r.stdout or "")
-                    t["ocr_segments"] = int(n.group(1)) if n else 0
+                    mp4 = os.path.join(vdir, "source.mp4")
+                    meta_v, rows_v, segs_v = DA.analyze_video(mp4, vdir, a.interval, a.frames)
+                    DA.write_outputs(vdir, "https://www.douyin.com/video/%s" % aid,
+                                     meta_v, rows_v, segs_v, a.interval, stamp)
+                    t["ocr_dir"] = vdir
+                    t["ocr_segments"] = len(segs_v)
                     print("  OCR: %d 段" % t["ocr_segments"], flush=True)
                 except Exception as e:
-                    t["ocr_error"] = type(e).__name__
+                    t["ocr_error"] = "%s %s" % (type(e).__name__, str(e)[:80])
+                    print("  OCR 失败:", t["ocr_error"], flush=True)
             results.append(t)
 
     # 4) 汇总

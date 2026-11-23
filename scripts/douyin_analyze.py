@@ -75,11 +75,25 @@ def extract_frames(video, work, interval, max_frames):
     return frames, (err[-200:] if rc != 0 else "")
 
 
+_OCR_ENGINE = None
+
+
+def get_ocr():
+    """RapidOCR 引擎全局缓存。
+
+    批量分析多条视频时只加载一次模型，省掉每条 2-3 秒的初始化开销。
+    """
+    global _OCR_ENGINE
+    if _OCR_ENGINE is None:
+        from rapidocr_onnxruntime import RapidOCR
+        _OCR_ENGINE = RapidOCR()
+    return _OCR_ENGINE
+
+
 def ocr_frames(frames, interval):
-    from rapidocr_onnxruntime import RapidOCR
     import numpy as np
     from PIL import Image
-    ocr = RapidOCR()
+    ocr = get_ocr()
     rows = []
     for i, fp in enumerate(frames):
         t = round(i * interval, 2)
@@ -127,6 +141,60 @@ def keywords(segs, top=12):
     return [{"word": w, "count": c} for w, c in grams.most_common(top)]
 
 
+def analyze_video(video, work, interval, max_frames):
+    """抽帧 + OCR + 去重，返回 (meta, rows, segs)。
+
+    与 main() 同一条流水线，供同进程内批量调用（引擎复用，不再重复加载模型）。
+    """
+    meta = probe(video)
+    frames, _ferr = extract_frames(video, work, interval, max_frames)
+    if not frames:
+        return meta, [], []
+    rows = ocr_frames(frames, interval)
+    segs = dedupe(rows, interval)
+    return meta, rows, segs
+
+
+def write_outputs(work, source, meta, rows, segs, interval, rid=None):
+    """写出 transcript.md / transcript.srt / report.json，返回本次生成时间戳。"""
+    rid = rid or datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    md = ["# 视频画面文字稿（OCR 提取）", "",
+          "| 项 | 值 |", "|---|---|",
+          "| 来源 | `%s` |" % source,
+          "| 时长 | %s 秒 |" % meta.get("duration"),
+          "| 分辨率 | %s x %s |" % (meta.get("width"), meta.get("height")),
+          "| 抽帧 | 每 %s 秒，共 %d 帧 |" % (interval, len(rows)),
+          "| 文字段 | %d |" % len(segs), "",
+          "## 带时间轴文字稿", ""]
+    for s in segs:
+        md.append("- **%s → %s**　%s" % (ts(s["start"]), ts(s["end"]), s["text"]))
+    if not segs:
+        md.append("- （未识别到画面文字；该视频可能无硬字幕，或需语音转写）")
+    md += ["", "## 高频词（2-gram 统计，非语义总结）", ""]
+    md += ["- %s ×%d" % (k["word"], k["count"]) for k in keywords(segs)] or ["- （无）"]
+    md += ["", "> 本脚本只做真实 OCR 提取与统计，**不生成 AI 总结、不编造内容**。",
+           "> 若要「内容讲了什么」的语义总结，需另接 LLM；若无硬字幕，需语音转写（ASR）。", ""]
+    with open(os.path.join(work, "transcript.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(md))
+
+    srt = []
+    for i, s in enumerate(segs, 1):
+        srt += [str(i), "%s --> %s" % (ts(s["start"], True), ts(s["end"], True)),
+                s["text"], ""]
+    with open(os.path.join(work, "transcript.srt"), "w", encoding="utf-8-sig") as f:
+        f.write("\n".join(srt))
+
+    report = {"generated": rid, "source": source, "meta": meta,
+              "interval": interval, "frames_sampled": len(rows),
+              "segments": segs, "unique_texts": len(set(s["text"] for s in segs)),
+              "keywords": keywords(segs),
+              "engine": "ffmpeg frames + rapidocr_onnxruntime (no model weights, no API, no Docker)",
+              "note": "只做真实提取与统计，不生成语义总结；无硬字幕时结果为 0 条属正常"}
+    with open(os.path.join(work, "report.json"), "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+    return rid
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--file", help="本地视频文件")
@@ -171,53 +239,16 @@ def main():
         print("ABORT: 视频文件不存在:", video)
         return 2
 
-    meta = probe(video)
+    meta, rows, segs = analyze_video(video, work, a.interval, a.frames)
     print("元信息:", meta, flush=True)
-    frames, ferr = extract_frames(video, work, a.interval, a.frames)
-    print("抽帧 %d 张 %s" % (len(frames), ferr), flush=True)
-    if not frames:
+    if not rows:
         print("ABORT: 抽帧失败，未产出任何分析")
         return 2
-
-    rows = ocr_frames(frames, a.interval)
-    segs = dedupe(rows, a.interval)
     print("识别出 %d 个文字段" % len(segs), flush=True)
     for s in segs[:6]:
         print("  [%s] %s" % (ts(s["start"]), s["text"][:70]), flush=True)
 
-    md = ["# 视频画面文字稿（OCR 提取）", "",
-          "| 项 | 值 |", "|---|---|",
-          "| 来源 | `%s` |" % source,
-          "| 时长 | %s 秒 |" % meta.get("duration"),
-          "| 分辨率 | %s x %s |" % (meta.get("width"), meta.get("height")),
-          "| 抽帧 | 每 %s 秒，共 %d 帧 |" % (a.interval, len(rows)),
-          "| 文字段 | %d |" % len(segs), "",
-          "## 带时间轴文字稿", ""]
-    for s in segs:
-        md.append("- **%s → %s**　%s" % (ts(s["start"]), ts(s["end"]), s["text"]))
-    if not segs:
-        md.append("- （未识别到画面文字；该视频可能无硬字幕，或需语音转写）")
-    md += ["", "## 高频词（2-gram 统计，非语义总结）", ""]
-    md += ["- %s ×%d" % (k["word"], k["count"]) for k in keywords(segs)] or ["- （无）"]
-    md += ["", "> 本脚本只做真实 OCR 提取与统计，**不生成 AI 总结、不编造内容**。",
-           "> 若要「内容讲了什么」的语义总结，需另接 LLM；若无硬字幕，需语音转写（ASR）。", ""]
-    with open(os.path.join(work, "transcript.md"), "w", encoding="utf-8") as f:
-        f.write("\n".join(md))
-
-    srt = []
-    for i, s in enumerate(segs, 1):
-        srt += [str(i), "%s --> %s" % (ts(s["start"], True), ts(s["end"], True)), s["text"], ""]
-    with open(os.path.join(work, "transcript.srt"), "w", encoding="utf-8-sig") as f:
-        f.write("\n".join(srt))
-
-    report = {"generated": rid, "source": source, "meta": meta,
-              "interval": a.interval, "frames_sampled": len(rows),
-              "segments": segs, "unique_texts": len(set(s["text"] for s in segs)),
-              "keywords": keywords(segs),
-              "engine": "ffmpeg frames + rapidocr_onnxruntime (no model weights, no API, no Docker)",
-              "note": "只做真实提取与统计，不生成语义总结；无硬字幕时结果为 0 条属正常"}
-    with open(os.path.join(work, "report.json"), "w", encoding="utf-8") as f:
-        json.dump(report, f, ensure_ascii=False, indent=2)
+    write_outputs(work, source, meta, rows, segs, a.interval, rid)
     print("\nOK 输出:", work)
     print("  transcript.md / transcript.srt / report.json")
     return 0

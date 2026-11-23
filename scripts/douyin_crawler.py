@@ -41,7 +41,7 @@ from playwright.sync_api import sync_playwright
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/138.0.0.0 Safari/537.36")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import OUT_ROOT, BROWSER_CHANNEL  # noqa: E402
+from config import OUT_ROOT, BROWSER_CHANNEL, check_playwright  # noqa: E402
 
 ROOT = os.path.join(OUT_ROOT, "crawl")
 

@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import douyin_auto as DA  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import FFMPEG, FFPROBE, OUT_ROOT  # noqa: E402
+from config import FFMPEG, FFPROBE, OUT_ROOT, check_deps  # noqa: E402
 
 OUTDIR = os.path.join(OUT_ROOT, "audio")
 

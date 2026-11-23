@@ -19,6 +19,7 @@
 import os
 import shutil
 import sys
+import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IS_WIN = os.name == "nt"
@@ -115,6 +116,33 @@ PROFILE = os.path.join(
 
 # ---- 同目录的分析器 ----
 ANALYZER = os.path.join(HERE, "douyin_analyze.py")
+
+
+def profile_dir(name):
+    """每个脚本用独立的浏览器 profile 子目录。
+
+    auto / channel / audio 同时跑时若共用一个 user-data-dir，第二个浏览器
+    会因为 profile 锁冲突而启动失败。
+    """
+    p = os.path.join(PROFILE, name)
+    os.makedirs(p, exist_ok=True)
+    return p
+
+
+# 本机 CDP 请求只打 127.0.0.1，必须绕开系统代理，
+# 否则设置了 http_proxy 的机器上请求会被代理劫持而失败。
+LOCAL_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def check_playwright():
+    """douyin_crawler.py 专用依赖检查。"""
+    miss = []
+    try:
+        import playwright  # noqa: F401
+    except ImportError:
+        miss.append("playwright 未安装（仅 douyin_crawler.py 需要）："
+                    "pip install playwright && playwright install chromium")
+    return miss
 
 
 def ensure_out(*parts):

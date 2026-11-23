@@ -62,15 +62,23 @@ python scripts/douyin_crawler.py --url "https://www.douyin.com/video/<任意一�
 依赖：`websocket-client`、`requests`、`rapidocr_onnxruntime`、`numpy`、`Pillow`、
 `playwright`（仅 crawler）、`yt-dlp`（仅 analyze 的 `--url` 兜底）；ffmpeg/ffprobe 需在 PATH。
 
+**每个脚本启动前都会做依赖预检**，缺什么会明确报出来并给出安装方法，
+不会跑到一半才抛 traceback。三个入口脚本各用独立浏览器 profile 子目录
+（`auto` / `channel` / `audio`），同时跑不会因 profile 锁冲突失败。
+
 ## 四条链路，按可靠性排序
 
 ### A. `douyin_auto.py --url`（主链路，全自动）
 
 可选参数：`--interval`（抽帧间隔秒，默认 3）、`--frames`（默认 40）、`--wait`（页面等待上限，默认 50）、
-`--text-only`（只抓页面文字不下载视频）。
+`--text-only`（只抓页面文字不下载视频）、`--port`（CDP 端口，默认 9224，被占用时换）。
 
 成功时输出：`page_content.md`（平台自带章节要点/描述/作者/发布时间）、`meta.json`、`source.mp4`、
 `RESULT.md`，以及 `transcript.md` / `transcript.srt` / `report.json`。
+
+**速度参考**：`--text-only` 约 15 秒；完整分析一条 147 秒视频约 44 秒（下载仅 0.6 秒，
+耗时大头是浏览器启动与等页面签名取流）。批量模式 `douyin_channel.py` 走**进程内**调用，
+OCR 模型只加载一次，比每条起子进程省 2–3 秒/条。
 
 ### B. 已有本地视频（最稳、最快）
 

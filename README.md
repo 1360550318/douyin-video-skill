@@ -85,6 +85,13 @@ pip install -r requirements.txt
 playwright install chromium      # 只有 douyin_crawler.py 需要
 ```
 
+**每个脚本启动前都会做依赖预检**，缺什么会直接告诉你缺什么、怎么装，
+不会等到一半才崩。也可以自己查：
+
+```bash
+python -c "import sys; sys.path.insert(0,'scripts'); import config; print(config.check_deps())"
+```
+
 ### 全局配置（可选，全有默认值）
 
 | 环境变量 | 默认 | 说明 |
@@ -94,7 +101,10 @@ playwright install chromium      # 只有 douyin_crawler.py 需要
 | `DOUYIN_BROWSER` | 自动找 Edge → Chrome | 浏览器可执行文件 |
 | `DOUYIN_BROWSER_CHANNEL` | 自动推断 `msedge`/`chrome` | Playwright 通道，留空用自带内核 |
 | `DOUYIN_BROWSER_COOKIES` | **空（不读）** | 设为 `chrome`/`edge` 才让 yt-dlp 读本机浏览器 cookie |
-| `DOUYIN_PROFILE` | `~/.cache/douyin_video_skill` | 独立浏览器 profile，不污染你的日常浏览数据 |
+| `DOUYIN_PROFILE` | `~/.cache/douyin_video_skill` | 独立浏览器 profile 根目录，不污染你的日常浏览数据 |
+
+> 三个入口脚本各自用 `auto` / `channel` / `audio` 独立子 profile，
+> 同时跑不会因为 profile 锁冲突而启动失败。
 
 ---
 
@@ -113,8 +123,22 @@ python scripts/douyin_auto.py --url "https://v.douyin.com/xxxxxxx/" --interval 3
 | `--frames` | 40 | 最多抽多少帧 |
 | `--wait` | 50 | 页面等待上限（秒） |
 | `--text-only` | 关 | 只抓页面文字，不下载视频（最省时间） |
+| `--port` | 9224 | CDP 调试端口，被占用时换一个 |
 
 产物在 `~/douyin_output/auto_<时间戳>/`，同时生成 `RESULT.md` 汇总。
+
+### 速度实测
+
+| 场景 | 耗时 |
+|---|---|
+| `--text-only`（只要平台章节要点） | ~15 s |
+| 完整分析（147 秒视频 / 12 帧 OCR） | ~44 s |
+| 视频下载 | 0.6 s（5.9 MB，约 10.7 MB/s） |
+| 批量模式（`douyin_channel.py`） | 每条约 5 s，**OCR 引擎只加载一次** |
+
+主要耗时在浏览器启动与页面等签名取流，不是下载也不是 OCR。
+`douyin_channel.py` 批量跑时走**进程内**调用，模型只初始化一次，
+比每条视频起一个子进程省掉约 2–3 秒/条。
 
 ### 2. 采集一个博主的全部作品
 
