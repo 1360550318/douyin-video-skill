@@ -61,6 +61,13 @@ python scripts/doctor.py
 全绿即代表这台机器可用（会逐项列出 Python 版本、依赖包、浏览器、ffmpeg、脚本语法、输出目录）。
 `--json` 参数可输出机器可读结果，方便 AI Agent 或 CI 判断。
 
+另有 `python scripts/selftest.py` 做**静态质检**（不开浏览器、不联网，秒级）：
+语法编译、依赖清单与实际 import 的一致性、README/SKILL.md 里的参数是否真实存在、
+硬编码路径与密钥扫描、跨平台与编码问题。P0+P1 归零才算干净。
+
+仓库每次 push 都会自动跑这两项（[CI](.github/workflows/ci.yml)），结果对所有人可见——
+**这就是这块的"独立第三方审计"**：不是谁说了算，而是每次改动都自动过一遍固定标准。
+
 ### 装好之后怎么用
 
 朋友的 AI Agent 会自动带上这个 skill。用户只需要说：
@@ -266,9 +273,11 @@ douyin-video-skill/
 ├── requirements.txt
 ├── install.py                  # 一键安装：装依赖 → 装进 skill 目录 → 自检
 ├── install.sh / install.cmd    # 上面的 shell / cmd 包装
+├── .github/workflows/ci.yml    # 每次 push 自动跑静态质检 + 环境自检
 ├── scripts/
 │   ├── config.py               # 路径与外部依赖集中解析
 │   ├── doctor.py               # 环境自检（一条命令确认能不能跑）
+│   ├── selftest.py             # 静态质检（语法/依赖/CLI一致性/卫生/跨平台）
 │   ├── douyin_auto.py          # 主链路：链接 → 视频 → 全分析
 │   ├── douyin_analyze.py       # 抽帧 OCR 分析器（也可分析本地文件）
 │   ├── douyin_channel.py       # 博主最近 N 期
