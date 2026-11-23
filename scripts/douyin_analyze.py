@@ -5,11 +5,11 @@
 只做「真实提取 + 统计」，不生成 AI 总结、不编造内容；没识别到文字就如实写 0 条。
 
 用法：
-  python douyin_analyze.py --file "E:\\网页下载\\xxx_1080p.mp4"
+  python douyin_analyze.py --file "path/to/video.mp4"
   python douyin_analyze.py --file xxx.mp4 --interval 2 --frames 60
-  python douyin_analyze.py --url "https://v.douyin.com/xxxx/"   # 需 Chrome 已访问过 douyin.com
+  python douyin_analyze.py --url "https://v.douyin.com/xxxx/"   # 需浏览器已访问过 douyin.com
 
-抖音限制（2026-08 起）：纯 HTTP 接口已关，yt-dlp 需要活跃浏览器登录态
+抖音限制（2026-08 起）：纯 HTTP 接口已关，yt-dlp 需要活跃浏览器会话
 （__ac 签名 + s_v_web_id）。链接下载失败时脚本会明确报错并提示改用本地文件，
 不会假装成功、也不会伪造分析结果。
 """
