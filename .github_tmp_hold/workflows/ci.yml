@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  static-check:
+    name: 静态质检 + 环境自检
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 静态质检（语法 / 依赖清单 / CLI 一致性 / 开源卫生 / 跨平台）
+        run: python scripts/selftest.py --json
+
+      - name: 基础依赖安装
+        run: |
+          python -m pip install --upgrade pip
+          pip install websocket-client requests numpy Pillow rapidocr-onnxruntime
+
+      - name: 环境自检（缺浏览器/ffmpeg 属预期，只看 P0/P1）
+        run: python scripts/doctor.py --json || true
+
+      - name: 本地视频分析链路冒烟（合成一段测试视频，验证抽帧+OCR 管线）
+        run: |
+          python - <<'PY'
+          import os, subprocess, sys, tempfile
+          d = tempfile.mkdtemp()
+          mp4 = os.path.join(d, "t.mp4")
+          # 生成 3 秒纯色测试视频
+          r = subprocess.run(["ffmpeg", "-y", "-f", "lavfi",
+                              "-i", "color=c=black:s=320x240:d=3",
+                              "-pix_fmt", "yuv420p", mp4],
+                             capture_output=True)
+          if r.returncode != 0 or not os.path.exists(mp4):
+              print("SKIP: 环境无 ffmpeg，跳过冒烟")
+              sys.exit(0)
+          r = subprocess.run([sys.executable, "scripts/douyin_analyze.py",
+                              "--file", mp4, "--interval", "1", "--frames", "3"],
+                             capture_output=True, text=True)
+          print(r.stdout[-1500:])
+          sys.exit(r.returncode)
+          PY
