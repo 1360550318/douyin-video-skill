@@ -5,6 +5,26 @@ description: 抖音链接一键内容分析。当用户发来抖音分享链接�
 
 # 抖音视频 → 内容分析
 
+## 首次使用：先自检（别跳过）
+
+本 skill 需要 Python 依赖 + Edge/Chrome + ffmpeg。**第一次用之前先跑一次自检**：
+
+```bash
+python scripts/doctor.py
+```
+
+- 全绿 → 直接用
+- 报 `[FAIL]` → 让用户执行 `pip install -r requirements.txt`（或你直接执行）
+- `scripts/` 目录根本不存在 → skill 没装全，让用户执行：
+  ```bash
+  git clone https://github.com/1360550318/douyin-video-skill.git <skill目录>/douyin-video
+  ```
+
+> ⚠️ 本文件里的 `scripts/xxx.py` 都是**相对本 skill 目录**的路径。
+> 实际调用请用绝对路径（skill 目录一般是 `~/.workbuddy/skills/douyin-video/`，
+> Claude Code 是 `~/.claude/skills/douyin-video/`）。
+> 在 Windows 上如果当前工作目录不是 skill 目录，相对路径会找不到文件。
+
 ## 一句话用法（主链路，全自动）
 
 用户给链接，直接跑（**不需要用户装插件、不需要关浏览器、不需要登录**）：

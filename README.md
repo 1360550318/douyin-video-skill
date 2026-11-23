@@ -9,6 +9,70 @@
 
 ---
 
+## ⚡ 30 秒部署（给 AI Agent / 朋友）
+
+> **你就是要把这个链接发给朋友，让他的 AI Agent 直接能用？→ 看这一节就够了。**
+
+仓库根目录**本身就是一个合法的 skill 目录**（`SKILL.md` 在根），所以装起来只有三步。
+
+### 方式 A · 把下面这段直接发给他的 AI Agent（最省事）
+
+```
+请把 https://github.com/1360550318/douyin-video-skill 安装成一个 skill：
+
+1. git clone https://github.com/1360550318/douyin-video-skill.git <你的 skill 目录>/douyin-video
+2. pip install -r <你的 skill 目录>/douyin-video/requirements.txt
+3. python <你的 skill 目录>/douyin-video/scripts/doctor.py   # 自检，应显示"环境完全就绪"
+4. 读 <你的 skill 目录>/douyin-video/SKILL.md 了解用法
+
+装好后，用户发来抖音链接时，请执行：
+python <你的 skill 目录>/douyin-video/scripts/douyin_auto.py --url "<链接>"
+```
+
+### 方式 B · 朋友自己装（一条命令）
+
+```bash
+git clone https://github.com/1360550318/douyin-video-skill.git
+cd douyin-video-skill
+python install.py --link        # Windows: install.cmd --link
+```
+
+`install.py` 会：装依赖 → 装进检测到的 skill 目录 → 跑自检 → 打印下一步。
+`--link` 会依次尝试符号链接 / 目录联结 / 复制三种方式。
+
+### skill 目录在哪
+
+| AI Agent | 目录 |
+|---|---|
+| WorkBuddy | `~/.workbuddy/skills/` |
+| Claude Code | `~/.claude/skills/` |
+| Cursor | `~/.cursor/skills/` |
+| GitHub Copilot CLI | `~/.config/github-copilot/skills/` |
+| Codex CLI | `~/.codex/skills/` |
+
+`install.py --link` 会自动检测上面这些目录里存在的第一个并装进去。
+
+### 装完怎么确认
+
+```bash
+python scripts/doctor.py
+```
+
+全绿即代表这台机器可用（会逐项列出 Python 版本、依赖包、浏览器、ffmpeg、脚本语法、输出目录）。
+`--json` 参数可输出机器可读结果，方便 AI Agent 或 CI 判断。
+
+### 装好之后怎么用
+
+朋友的 AI Agent 会自动带上这个 skill。用户只需要说：
+
+```
+帮我分析这条抖音：https://v.douyin.com/xxxxxxx/
+```
+
+Agent 就会读 `SKILL.md` 拿到用法，执行主链路，产出**带时间轴的画面文字稿 + SRT 字幕 + 平台章节要点**。
+
+---
+
 ## 一、它能干什么
 
 | 能力 | 命令 | 说明 |
@@ -200,8 +264,11 @@ douyin-video-skill/
 ├── README.md
 ├── LICENSE                     # MIT
 ├── requirements.txt
+├── install.py                  # 一键安装：装依赖 → 装进 skill 目录 → 自检
+├── install.sh / install.cmd    # 上面的 shell / cmd 包装
 ├── scripts/
 │   ├── config.py               # 路径与外部依赖集中解析
+│   ├── doctor.py               # 环境自检（一条命令确认能不能跑）
 │   ├── douyin_auto.py          # 主链路：链接 → 视频 → 全分析
 │   ├── douyin_analyze.py       # 抽帧 OCR 分析器（也可分析本地文件）
 │   ├── douyin_channel.py       # 博主最近 N 期
