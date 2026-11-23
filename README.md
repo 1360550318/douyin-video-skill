@@ -65,8 +65,12 @@ python scripts/doctor.py
 语法编译、依赖清单与实际 import 的一致性、README/SKILL.md 里的参数是否真实存在、
 硬编码路径与密钥扫描、跨平台与编码问题。P0+P1 归零才算干净。
 
-仓库每次 push 都会自动跑这两项（[CI](.github/workflows/ci.yml)），结果对所有人可见——
-**这就是这块的"独立第三方审计"**：不是谁说了算，而是每次改动都自动过一遍固定标准。
+想启用**自动化审计**的话：`docs/github-actions-ci.yml` 是现成的 GitHub Actions 工作流模板，
+复制到 `.github/workflows/ci.yml` 即可——之后每次 push / PR 都会自动跑静态质检 + 环境自检，
+结果对所有人可见。**这就是这块的"独立第三方审计"**：不是谁说了算，而是每次改动都自动过一遍固定标准。
+
+> 没有 CI 也不影响使用：`python scripts/selftest.py` 和 `python scripts/doctor.py` 随时可跑。
+> （把文件写进 `.github/workflows/` 需要令牌带 `workflow` scope，没有这个权限时用模板即可。）
 
 ### 装好之后怎么用
 

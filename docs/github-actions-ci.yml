@@ -1,3 +1,6 @@
+# 用法：本文件是 GitHub Actions 工作流模板。
+# 复制到 .github/workflows/ci.yml 即可启用（需要对该仓库有写权限的令牌）。
+# 注意：写入 .github/workflows/ 下的文件需要令牌带 workflow scope。
 name: CI
 
 on:
