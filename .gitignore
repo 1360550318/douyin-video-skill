@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 产物
+douyin_output/
+output/
+auto_*/
+channel/
+crawl/
+*.mp4
+*.mp3
+*.wav
+*.jpg
+*.png
+!docs/**/*.png
+
+# 日志与临时
+*.log
+tmp/
+.tmp/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 本机私有配置
+.env
+.env.*
+cookies.txt
+*.har
+
+# Playwright
+playwright/.local-browsers/
+ms-playwright/

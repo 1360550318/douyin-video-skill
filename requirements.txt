@@ -1,0 +1,25 @@
+# 抖音视频内容分析 · 依赖
+#
+# 核心链路只需要少量依赖，全部无模型权重、无 API key、无 Docker。
+#
+#   pip install -r requirements.txt
+#
+# 可选：README 里标注「可选」的依赖，只有对应功能才需要。
+
+# CDP 客户端（douyin_auto / douyin_channel / douyin_audio 共用）
+websocket-client>=1.6.0
+
+# 下载 MP4 / 音频直链
+requests>=2.31.0
+
+# 抽帧 OCR（douyin_analyze）—— RapidOCR 自带 ONNX 运行时，不下载模型权重
+rapidocr-onnxruntime>=1.3.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# 创作者全量作品采集（douyin_crawler）
+# 安装后还需执行：playwright install chromium
+playwright>=1.40.0
+
+# 可选：douyin_analyze 的 --url 直连下载兜底（需要浏览器活跃会话）
+yt-dlp>=2024.1.0
