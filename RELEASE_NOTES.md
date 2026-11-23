@@ -1,48 +1,40 @@
-# v1.0.0
+# v1.0.1
 
-首个版本：把一条抖音分享链接变成一份可复核的内容分析报告，并支持采集一个博主的全部作品。
+审计发现项修复版。可移植性、性能与健壮性三方面改进。
 
-## 能力
+## 修复
 
-| 能力 | 命令 |
-|---|---|
-| 单条视频全分析 | `python scripts/douyin_auto.py --url "<分享链接>"` |
-| 博主全部作品采集 | `python scripts/douyin_crawler.py --url "<主页或任意一条作品链接>"` |
-| 博主最近 N 期 | `python scripts/douyin_channel.py --sec-uid "<sec_uid>" --limit 10` |
-| 只要音频 | `python scripts/douyin_audio.py --url "<分享链接>"` |
-| 本地视频分析 | `python scripts/douyin_analyze.py --file "video.mp4"` |
+| 级别 | 问题 | 修复 |
+|---|---|---|
+| **P0** | 找不到浏览器时 `subprocess.Popen([None, ...])` 直接崩 | 启动前做依赖预检（`check_deps()` / `check_playwright()`），缺什么列什么并给安装方法 |
+| **P1 性能** | 批量模式每条视频起一个子进程跑 OCR，RapidOCR 模型重复加载（每次 2–3 秒） | 抽出 `analyze_video()` / `write_outputs()`，批量改为**进程内**调用，模型只加载一次；顺带省掉 N 次进程启动，产物也直接落在每个视频目录里 |
+| **P2** | 设置了 `http_proxy` 的机器上，CDP 请求 `127.0.0.1` 会被代理劫持 | 新增 `LOCAL_OPENER`（`ProxyHandler({})`）绕开代理 |
+| **P2** | OCR 子进程超时会抛未捕获异常 | 捕获 `TimeoutExpired` 并给出可读提示 |
+| **P2** | `auto` 与 `channel` 共用浏览器 profile，同时跑会因 profile 锁冲突起不来 | 各自独立子目录 `auto` / `channel` / `audio` |
+| **P3** | CDP 端口硬编码 9224，被占用时无法规避 | 新增 `--port` 参数 |
+| **P3** | 未指定作者时批量汇总标题为空 | 从已校验的作品元信息自动回填昵称 |
 
-## 特点
-
-- **零模型、零 API、零 Docker**：OCR 用本地 RapidOCR（ONNX），不联网、不调大模型
-- **不读登录态**：主链路用独立的 headless 浏览器 profile；yt-dlp 读浏览器 cookie 是**显式开启**的，默认关闭
-- **不编造**：只做真实提取与统计，识别不到就写 0 条
-- **不虚报条数**：采集覆盖率如实对照平台 `aweme_count` 写在 `coverage.json` 里
-
-## 实测
+## 速度实测（v1.0.1）
 
 ```
-链接 → 147.33 秒 / 576×1024 / h264 / 5.89 MB
-下载 0.6s（10.7 MB/s）
-抽 15 帧 → 识别 15 段画面文字
-同时抓到平台自带 7 章「章节要点」+ 作者 + 发布时间
+--text-only（只要平台章节要点）      ~15 s
+完整分析（147 秒视频 / 12 帧 OCR）   ~44 s
+视频下载 5.9 MB                      0.6 s（10.7 MB/s）
+批量模式（douyin_channel）           每条约 5 s，OCR 引擎只加载一次
 ```
 
-创作者采集：自动反查 `sec_uid`、BFS 遍历、逐条归属校验、增量落盘、覆盖率如实报告。
+主要耗时在浏览器启动与等页面签名取流，不是下载也不是 OCR。
 
-## 安装
+## 回归验证
 
-```bash
-pip install -r requirements.txt
-playwright install chromium   # 仅 douyin_crawler.py 需要
-```
+- 5 个脚本语法编译 + `--help` 全通过
+- 单条视频端到端跑通（真实链接，产出 transcript.md / .srt / report.json）
+- 批量链路跑通（作者逐条校验、每条 OCR 出段、INDEX.md 汇总正确）
+- `check_deps()` / `check_playwright()` 返回空
+- 新增 API（`get_ocr` / `analyze_video` / `write_outputs` / `profile_dir` / `LOCAL_OPENER`）冒烟通过
+- CLI 与 README / SKILL.md 逐条核对一致
 
-需要 Edge 或 Chrome，以及 PATH 里的 ffmpeg / ffprobe。可用 `DOUYIN_OUT`、`DOUYIN_BROWSER`、
-`DOUYIN_FFMPEG` 等环境变量覆盖默认值。
+## 文档同步
 
-## 边界
-
-- 服务端对未登录会话只暴露最近 38 条作品，「一次扒全 N 条」在当前平台条件下**不可达**，
-  补齐历史需靠每日增量账本长期累积
-- OCR 文字可能有错字，引用前请人工复核
-- 仅用于个人学习与研究你已能正常访问的公开内容，版权属于原作者，请勿商用或再分发
+README、SKILL.md、`docs/技术原理.md`（新增「工程细节：可移植性与性能」一节）、
+`docs/常见问题.md`（新增浏览器缺失 / 端口冲突 / 依赖预检 / 批量慢 四个问答）
